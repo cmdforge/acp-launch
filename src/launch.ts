@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { parseDeviceCode, presentDeviceCode } from './device-code.js';
+import { copyToClipboard, parseDeviceCode } from './device-code.js';
 import { openUrl } from './open-url.js';
+import { spawnCommand } from './spawn.js';
 import {
   client,
   ndJsonStream,
@@ -30,7 +31,7 @@ export type LaunchEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'update'; notification: SessionNotification }
   | { type: 'permission'; toolCall: ToolCallUpdate; outcome: RequestPermissionOutcome }
-  | { type: 'device-code'; url: string; code: string };
+  | { type: 'device-code'; url: string; code: string; copied: boolean };
 
 export interface LaunchOptions {
   /** Agent command and args. Defaults to `npx -y @github/copilot --acp`. */
@@ -156,13 +157,13 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
 
   const sessionCwd = path.resolve(cwd);
   onEvent({ type: 'status', message: `Starting ${command.join(' ')}` });
-  const proc = spawn(bin, args, { cwd: sessionCwd, stdio: ['pipe', 'pipe', 'inherit'], shell: process.platform === 'win32' });
+  const proc = spawnCommand(bin, args, { cwd: sessionCwd, stdio: ['pipe', 'pipe', 'inherit'] });
   const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
   await new Promise<void>((resolve, reject) => {
     proc.once('spawn', resolve);
     proc.once('error', (err) => reject(new Error(`Failed to start agent \`${bin}\`: ${err.message}`)));
   });
-  const stream = ndJsonStream(Writable.toWeb(proc.stdin), Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>);
+  const stream = ndJsonStream(Writable.toWeb(proc.stdin!), Readable.toWeb(proc.stdout!) as ReadableStream<Uint8Array>);
 
   const app = client({ name: '@cmdforge/acp-launch' })
     .onRequest('session/request_permission', ({ params }) => {
@@ -310,15 +311,13 @@ async function login(agent: ClientContext, methods: AuthMethod[], agentCommand: 
   }
 
   const [bin, ...args] = terminal.command;
-  const dialog = new AbortController();
   const code = await new Promise<number | null>((resolve, reject) => {
-    const child = spawn(bin!, args, {
+    const child = spawnCommand(bin!, args, {
       cwd,
       env: { ...process.env, ...terminal.env },
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
     });
-    // Mirror output, and surface a device code where the user will see it even if nobody reads our output.
+    // Mirror output, and copy any device code so it's ready to paste into the page the login opens.
     let output = '';
     let presented = false;
     const scan = (chunk: Buffer) => {
@@ -327,15 +326,14 @@ async function login(agent: ClientContext, methods: AuthMethod[], agentCommand: 
       const deviceCode = presented ? undefined : parseDeviceCode(output);
       if (deviceCode) {
         presented = true;
-        onEvent({ type: 'device-code', ...deviceCode });
-        void presentDeviceCode(deviceCode, dialog.signal).catch(() => {});
+        void copyToClipboard(deviceCode.code).then((copied) => onEvent({ type: 'device-code', ...deviceCode, copied }));
       }
     };
-    child.stdout.on('data', scan);
-    child.stderr.on('data', scan);
+    child.stdout?.on('data', scan);
+    child.stderr?.on('data', scan);
     child.on('error', reject);
     child.on('exit', resolve);
-  }).finally(() => dialog.abort());
+  });
   if (code !== 0) throw new Error(`Login failed: ${terminal.command.join(' ')} exited with code ${code}`);
 }
 

@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { openUrl } from './open-url.js';
 
 export interface DeviceCode {
   url: string;
@@ -13,42 +12,18 @@ export function parseDeviceCode(text: string): DeviceCode | undefined {
   return url && code ? { url, code } : undefined;
 }
 
-/** Run a helper command; `code` is null if it couldn't be started or was aborted. */
-function run(cmd: string, args: string[], input?: string, signal?: AbortSignal) {
-  return new Promise<{ code: number | null; stdout: string }>((resolve) => {
-    const child = spawn(cmd, args, { stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'], signal });
-    let stdout = '';
-    child.stdout?.on('data', (d) => (stdout += d));
-    child.on('error', () => resolve({ code: null, stdout }));
-    child.on('exit', (code) => resolve({ code, stdout }));
-    if (input !== undefined) child.stdin?.end(input);
+function pipeTo(cmd: string, args: string[], input: string) {
+  return new Promise<boolean>((resolve) => {
+    const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
+    child.on('error', () => resolve(false));
+    child.on('exit', (code) => resolve(code === 0));
+    child.stdin?.end(input);
   });
 }
 
+/** Best-effort copy to the system clipboard; returns whether it worked. */
 export async function copyToClipboard(text: string) {
-  if (process.platform === 'darwin') await run('pbcopy', [], text);
-  else if (process.platform === 'win32') await run('clip', [], text);
-  else if ((await run('wl-copy', [text])).code !== 0) await run('xclip', ['-selection', 'clipboard'], text);
-}
-
-/**
- * Show the device code somewhere visible even when nobody is watching our stdout:
- * copy it, then show a native dialog whose button opens the verification page.
- * Falls back to opening the page directly when no dialog is available.
- * Aborting `signal` (e.g. once login completes) closes the dialog.
- */
-export async function presentDeviceCode({ url, code }: DeviceCode, signal?: AbortSignal) {
-  await copyToClipboard(code);
-  const message = `Enter this code on GitHub to sign in to Copilot:\n\n${code}\n\nIt has been copied to your clipboard. Use a browser signed in to the account you want.`;
-  if (process.platform === 'darwin') {
-    const script = `display dialog ${JSON.stringify(message)} with title "acp-launch" buttons {"Cancel", "Open GitHub"} default button "Open GitHub" giving up after 900`;
-    const result = await run('osascript', ['-e', script], undefined, signal);
-    if (signal?.aborted) return;
-    if (result.code !== null) {
-      // Cancel exits non-zero; only the "Open GitHub" button opens the page.
-      if (result.stdout.includes('button returned:Open GitHub')) await openUrl(url);
-      return;
-    }
-  }
-  await openUrl(url);
+  if (process.platform === 'darwin') return pipeTo('pbcopy', [], text);
+  if (process.platform === 'win32') return pipeTo('clip', [], text);
+  return (await pipeTo('wl-copy', [], text)) || pipeTo('xclip', ['-selection', 'clipboard'], text);
 }

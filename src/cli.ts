@@ -16,6 +16,9 @@ Options:
   -m, --model <id>          Shorthand for --config model=<id>
       --mode <id>           Shorthand for --config mode=<id>
   -a, --agent <name>        Shorthand for --config agent=<name>
+      --disable-mcp <name>  Don't start this MCP server in the ACP session (repeatable).
+                            Avoids sign-in pages from servers like workiq; the app
+                            uses its own MCP setup when it resumes the session
   -C, --cwd <dir>           Session working directory (default: current directory)
       --permissions <mode>  Answer tool permission requests during the prompt with
                             deny (default), allow, or allow-always
@@ -50,6 +53,7 @@ function parse() {
         model: { type: 'string', short: 'm' },
         mode: { type: 'string' },
         agent: { type: 'string', short: 'a' },
+        'disable-mcp': { type: 'string', multiple: true, default: [] },
         cwd: { type: 'string', short: 'C' },
         permissions: { type: 'string', default: 'deny' },
         list: { type: 'boolean', default: false },
@@ -76,6 +80,7 @@ if (!isOneOf(o.permissions, ['deny', 'allow', 'allow-always'] as const satisfies
 }
 
 const command = positionals.length > 0 ? positionals : [...DEFAULT_AGENT_COMMAND];
+for (const name of o['disable-mcp']) command.push('--disable-mcp-server', name);
 
 const config = o.config.map((pair): [string, string] => {
   const eq = pair.indexOf('=');
@@ -114,7 +119,7 @@ function onEvent(event: LaunchEvent) {
     case 'session':
       return log(`Session ${event.sessionId}`);
     case 'device-code':
-      return console.error(`\nSign in to continue: enter \x1b[1m${event.code}\x1b[0m at ${event.url} (copied to clipboard)\n`);
+      return console.error(`\nSign in to continue: enter \x1b[1m${event.code}\x1b[0m at ${event.url}${event.copied ? ' (copied to clipboard)' : ''}\n`);
     case 'permission': {
       const decision = event.outcome.outcome === 'selected' ? event.outcome.optionId : 'cancelled';
       return log(`Permission ${decision}: ${event.toolCall.title ?? 'tool call'}`);
