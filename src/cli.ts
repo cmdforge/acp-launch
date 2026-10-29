@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Command, InvalidArgumentError, Option } from 'commander';
-import { launch, COPILOT_COMMAND, DEFAULT_AGENT_COMMAND, type LaunchEvent, type PermissionPolicy } from './launch.js';
+import { launch, COPILOT_COMMAND, DEFAULT_AGENT_COMMAND, VERSION, type LaunchEvent, type PermissionPolicy } from './launch.js';
 import { listMcpServers } from './mcp.js';
 
 const collect = (value: string, previous: string[] = []) => [...previous, value];
@@ -15,6 +15,7 @@ function parseConfigPair(pair: string, previous: Array<[string, string]> = []): 
 
 const program = new Command('acp-launch')
   .description('Start an ACP session, configure it, optionally run a first prompt, then open the session in the GitHub Copilot desktop app.')
+  .version(VERSION, '-v, --version')
   .usage('[options] [-- <agent command...>]')
   .argument('[agent-command...]', `agent to run over ACP (default: ${DEFAULT_AGENT_COMMAND.join(' ')})`)
   .option('-p, --prompt <text>', 'first prompt to send')

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { copyToClipboard, parseDeviceCode } from './device-code.js';
@@ -20,6 +21,8 @@ import {
   type StopReason,
   type ToolCallUpdate,
 } from '@agentclientprotocol/sdk';
+
+export const VERSION: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 export const COPILOT_COMMAND = ['npx', '-y', '@github/copilot'];
 export const DEFAULT_AGENT_COMMAND = [...COPILOT_COMMAND, '--acp'];
@@ -197,7 +200,7 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
           auth: { terminal: true },
           elicitation: { url: {} },
         },
-        clientInfo: { name: '@cmdforge/acp-launch', version: '0.1.0' },
+        clientInfo: { name: '@cmdforge/acp-launch', version: VERSION },
       });
 
       let session: ActiveSession;
