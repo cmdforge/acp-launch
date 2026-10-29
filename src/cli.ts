@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { parseArgs } from 'node:util';
 import { readFileSync } from 'node:fs';
-import { launch, DEFAULT_AGENT_COMMAND, DEFAULT_URL_TEMPLATE } from '../src/launch.js';
+import { parseArgs } from 'node:util';
+import { launch, DEFAULT_AGENT_COMMAND, DEFAULT_URL_TEMPLATE, type LaunchEvent, type OpenTiming, type PermissionPolicy } from './launch.js';
 
 const HELP = `Usage: acp-launch [options] [-- <agent command...>]
 
@@ -37,47 +37,52 @@ Examples:
   acp-launch --list
   acp-launch -p "hi" -- my-agent --acp`;
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`acp-launch: ${message}`);
   process.exit(1);
 }
 
-let parsed;
-try {
-  parsed = parseArgs({
-    allowPositionals: true,
-    options: {
-      prompt: { type: 'string', short: 'p' },
-      config: { type: 'string', short: 'c', multiple: true, default: [] },
-      model: { type: 'string', short: 'm' },
-      mode: { type: 'string' },
-      agent: { type: 'string', short: 'a' },
-      cwd: { type: 'string', short: 'C' },
-      open: { type: 'string', default: 'after' },
-      url: { type: 'string', default: DEFAULT_URL_TEMPLATE },
-      permissions: { type: 'string', default: 'deny' },
-      list: { type: 'boolean', default: false },
-      quiet: { type: 'boolean', short: 'q', default: false },
-      json: { type: 'boolean', default: false },
-      help: { type: 'boolean', short: 'h', default: false },
-    },
-  });
-} catch (err) {
-  fail(err.message);
+function parse() {
+  try {
+    return parseArgs({
+      allowPositionals: true,
+      options: {
+        prompt: { type: 'string', short: 'p' },
+        config: { type: 'string', short: 'c', multiple: true, default: [] },
+        model: { type: 'string', short: 'm' },
+        mode: { type: 'string' },
+        agent: { type: 'string', short: 'a' },
+        cwd: { type: 'string', short: 'C' },
+        open: { type: 'string', default: 'after' },
+        url: { type: 'string', default: DEFAULT_URL_TEMPLATE },
+        permissions: { type: 'string', default: 'deny' },
+        list: { type: 'boolean', default: false },
+        quiet: { type: 'boolean', short: 'q', default: false },
+        json: { type: 'boolean', default: false },
+        help: { type: 'boolean', short: 'h', default: false },
+      },
+    });
+  } catch (err) {
+    fail((err as Error).message);
+  }
 }
 
-const { values: o, positionals } = parsed;
+const { values: o, positionals } = parse();
 if (o.help) {
   console.log(HELP);
   process.exit(0);
 }
-if (!['after', 'before', 'never'].includes(o.open)) fail(`--open must be after, before, or never`);
-if (!['deny', 'allow', 'allow-always'].includes(o.permissions)) fail(`--permissions must be deny, allow, or allow-always`);
+
+const isOneOf = <T extends string>(value: string, allowed: readonly T[]): value is T => (allowed as readonly string[]).includes(value);
+if (!isOneOf(o.open, ['after', 'before', 'never'] as const satisfies readonly OpenTiming[])) fail('--open must be after, before, or never');
+if (!isOneOf(o.permissions, ['deny', 'allow', 'allow-always'] as const satisfies readonly PermissionPolicy[])) {
+  fail('--permissions must be deny, allow, or allow-always');
+}
 
 const customCommand = positionals.length > 0;
 const command = customCommand ? positionals : [...DEFAULT_AGENT_COMMAND];
 
-const config = o.config.map((pair) => {
+const config = o.config.map((pair): [string, string] => {
   const eq = pair.indexOf('=');
   if (eq <= 0) fail(`--config expects key=value, got "${pair}"`);
   return [pair.slice(0, eq), pair.slice(eq + 1)];
@@ -89,31 +94,36 @@ if (o.agent) {
   else command.push('--agent', o.agent);
 }
 
-let prompt = o.prompt;
-if (prompt === '-') prompt = readFileSync(0, 'utf8');
+const prompt = o.prompt === '-' ? readFileSync(0, 'utf8') : o.prompt;
 
 let midLine = false;
-const log = (msg) => {
+const log = (msg: string) => {
   if (o.json) return;
   if (midLine) process.stdout.write('\n');
   midLine = false;
   console.error(`\x1b[2m${msg}\x1b[0m`);
 };
 
-function onEvent(event) {
-  if (event.type === 'status') return log(event.message);
-  if (event.type === 'session') return log(`Session ${event.sessionId}`);
-  if (event.type === 'permission') {
-    const title = event.toolCall?.title ?? 'tool call';
-    return log(`Permission ${event.outcome.outcome === 'selected' ? event.outcome.optionId : 'cancelled'}: ${title}`);
-  }
-  if (event.type !== 'update' || o.quiet || o.json) return;
-  const update = event.update;
-  if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
-    process.stdout.write(update.content.text);
-    midLine = !update.content.text.endsWith('\n');
-  } else if (update.sessionUpdate === 'tool_call') {
-    log(`• ${update.title ?? update.kind ?? 'tool'}`);
+function onEvent(event: LaunchEvent) {
+  switch (event.type) {
+    case 'status':
+      return log(event.message);
+    case 'session':
+      return log(`Session ${event.sessionId}`);
+    case 'permission': {
+      const decision = event.outcome.outcome === 'selected' ? event.outcome.optionId : 'cancelled';
+      return log(`Permission ${decision}: ${event.toolCall.title ?? 'tool call'}`);
+    }
+    case 'update': {
+      if (o.quiet || o.json) return;
+      const update = event.notification.update;
+      if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
+        process.stdout.write(update.content.text);
+        midLine = !update.content.text.endsWith('\n');
+      } else if (update.sessionUpdate === 'tool_call') {
+        log(`• ${update.title}`);
+      }
+    }
   }
 }
 
@@ -133,10 +143,10 @@ try {
 
   if (o.json) {
     console.log(JSON.stringify(result, null, 2));
-  } else if (o.list) {
+  } else if (result.settings) {
     for (const s of result.settings) {
-      console.log(`${s.id}${s.name && s.name !== s.id ? ` (${s.name})` : ''}  current: ${s.current}`);
-      for (const v of s.values) console.log(`    ${v.id}${v.name && v.name !== v.id ? `  — ${v.name}` : ''}`);
+      console.log(`${s.id}${s.name !== s.id ? ` (${s.name})` : ''}  current: ${s.current}`);
+      for (const v of s.values) console.log(`    ${v.id}${v.name !== v.id ? `  — ${v.name}` : ''}`);
     }
     if (result.settings.length === 0) console.log('(agent exposes no session settings)');
   } else {
@@ -145,5 +155,5 @@ try {
   process.exit(0);
 } catch (err) {
   if (midLine) process.stdout.write('\n');
-  fail(err.message);
+  fail((err as Error).message);
 }

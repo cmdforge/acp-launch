@@ -8,8 +8,10 @@ npx -y @cmdforge/acp-launch --agent reviewer -p "Review the open changes"
 
 ## How it works
 
+Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package/@agentclientprotocol/sdk).
+
 1. Spawns the agent (default `npx -y @github/copilot --acp`) and runs `initialize` + `session/new`.
-2. Applies settings via `session/set_config_option` (falls back to `session/set_mode` / `session/set_model` for agents that only expose those).
+2. Applies settings via `session/set_config_option` (falls back to `session/set_mode` for agents that only expose modes).
 3. Sends the prompt with `session/prompt` and streams the reply to stdout.
 4. Closes the session so it's flushed to `~/.copilot/session-state/<id>`, then opens `ghapp://sessions/<id>`. The desktop app reads that directory and opens the session.
 
@@ -39,6 +41,14 @@ acp-launch -p "hi" --open never -- my-agent --acp
 - The Copilot CLI must be logged in (`npx -y @github/copilot login`); otherwise `session/new` fails with 403.
 - The CLI's `/app` command isn't exposed over ACP, so the app is opened via the `ghapp://` deep link instead.
 - With `--open before`, the app opens while this process still owns the session; whether the app shows the turn live depends on the app.
+
+## Development
+
+```bash
+npm install
+npm run build   # tsc -> dist/
+node dist/cli.js --help
+```
 
 ## Programmatic use
 

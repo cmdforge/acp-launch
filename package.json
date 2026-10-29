@@ -4,15 +4,24 @@
   "description": "Start an ACP agent session, configure it, run a first prompt, and open it in the GitHub Copilot desktop app",
   "type": "module",
   "bin": {
-    "acp-launch": "bin/acp-launch.js"
+    "acp-launch": "dist/cli.js"
   },
-  "exports": "./src/launch.js",
+  "exports": {
+    ".": {
+      "types": "./dist/launch.d.ts",
+      "import": "./dist/launch.js"
+    }
+  },
   "files": [
-    "bin",
-    "src"
+    "dist"
   ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
   "engines": {
-    "node": ">=18.3"
+    "node": ">=20"
   },
   "keywords": [
     "acp",
@@ -23,5 +32,12 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
   }
 }
