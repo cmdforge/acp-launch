@@ -24,7 +24,7 @@ import {
 
 export const VERSION: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-export const COPILOT_COMMAND = ['npx', '-y', '@github/copilot'];
+export const COPILOT_COMMAND = ['npx', '-y', '@github/copilot@1.0.105'];
 export const DEFAULT_AGENT_COMMAND = [...COPILOT_COMMAND, '--acp'];
 export { openUrl };
 
@@ -38,7 +38,7 @@ export type LaunchEvent =
   | { type: 'device-code'; url: string; code: string; copied: boolean };
 
 export interface LaunchOptions {
-  /** Agent command and args. Defaults to `npx -y @github/copilot --acp`. */
+  /** Agent command and args. Defaults to `npx -y @github/copilot@1.0.105 --acp`. */
   command?: string[];
   /** Session working directory. */
   cwd?: string;

@@ -10,7 +10,7 @@ npx -y @cmdforge/acp-launch --agent Planner -f prompt.md
 
 Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package/@agentclientprotocol/sdk).
 
-1. Spawns the agent (default `npx -y @github/copilot --acp`) and runs `initialize` + `session/new`.
+1. Spawns the agent (default `npx -y @github/copilot@1.0.105 --acp`) and runs `initialize` + `session/new`.
 2. Applies settings via `session/set_config_option` (falls back to `session/set_mode` for agents that only expose modes).
 3. Sends the prompt with `session/prompt` and streams the reply to stdout.
 4. Closes the session so it's flushed to `~/.copilot/session-state/<id>`, then opens `ghapp://sessions/<id>`. The desktop app reads that directory and opens the session.
