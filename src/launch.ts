@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
+import { parseDeviceCode, presentDeviceCode } from './device-code.js';
+import { openUrl } from './open-url.js';
 import {
   client,
   ndJsonStream,
@@ -19,6 +21,7 @@ import {
 } from '@agentclientprotocol/sdk';
 
 export const DEFAULT_AGENT_COMMAND = ['npx', '-y', '@github/copilot', '--acp'];
+export { openUrl };
 export const DEFAULT_URL_TEMPLATE = 'ghapp://sessions/{id}';
 
 export type OpenTiming = 'after' | 'before' | 'never';
@@ -28,7 +31,8 @@ export type LaunchEvent =
   | { type: 'status'; message: string }
   | { type: 'session'; sessionId: string }
   | { type: 'update'; notification: SessionNotification }
-  | { type: 'permission'; toolCall: ToolCallUpdate; outcome: RequestPermissionOutcome };
+  | { type: 'permission'; toolCall: ToolCallUpdate; outcome: RequestPermissionOutcome }
+  | { type: 'device-code'; url: string; code: string };
 
 export interface LaunchOptions {
   /** Agent command and args. Defaults to `npx -y @github/copilot --acp`. */
@@ -118,20 +122,6 @@ function resolveSetting(settings: Setting[], key: string, value: string) {
 
 export function sessionUrl(template: string, sessionId: string) {
   return template.replaceAll('{id}', encodeURIComponent(sessionId));
-}
-
-export function openUrl(url: string): Promise<void> {
-  const [cmd, args]: [string, string[]] =
-    process.platform === 'darwin'
-      ? ['open', [url]]
-      : process.platform === 'win32'
-        ? ['cmd', ['/c', 'start', '""', url]]
-        : ['xdg-open', [url]];
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: 'ignore' });
-    child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}`))));
-  });
 }
 
 function pickPermission(options: PermissionOption[], policy: PermissionPolicy): RequestPermissionOutcome {
@@ -310,7 +300,13 @@ function terminalAuthCommand(method: AuthMethod, agentCommand: string[]) {
     return { command: [...agentCommand, ...(method.args ?? [])], env: method.env ?? {} };
   }
   const legacy = method._meta?.['terminal-auth'] as { command?: string; args?: string[]; env?: Record<string, string> } | undefined;
-  if (legacy?.command) return { command: [legacy.command, ...(legacy.args ?? [])], env: legacy.env ?? {} };
+  if (legacy?.command) {
+    const args = [...(legacy.args ?? [])];
+    // Copilot's login defaults to a browser flow tied to whatever account the default browser
+    // is signed in to. The device flow lets the user approve from any browser or profile.
+    if (method.id === 'copilot-login' && !args.includes('--device-code')) args.push('--device-code');
+    return { command: [legacy.command, ...args], env: legacy.env ?? {} };
+  }
   return undefined;
 }
 
@@ -327,28 +323,32 @@ async function login(agent: ClientContext, methods: AuthMethod[], agentCommand: 
   }
 
   const [bin, ...args] = terminal.command;
+  const dialog = new AbortController();
   const code = await new Promise<number | null>((resolve, reject) => {
     const child = spawn(bin!, args, {
       cwd,
       env: { ...process.env, ...terminal.env },
-      stdio: ['inherit', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
     });
-    // Mirror output and open any device-code URL it prints; web flows open the browser themselves.
-    let opened = false;
+    // Mirror output, and surface a device code where the user will see it even if nobody reads our output.
+    let output = '';
+    let presented = false;
     const scan = (chunk: Buffer) => {
       process.stderr.write(chunk);
-      const url = /https?:\/\/\S*\/login\/device\S*/.exec(chunk.toString())?.[0];
-      if (url && !opened) {
-        opened = true;
-        void openUrl(url).catch(() => {});
+      output += chunk.toString();
+      const deviceCode = presented ? undefined : parseDeviceCode(output);
+      if (deviceCode) {
+        presented = true;
+        onEvent({ type: 'device-code', ...deviceCode });
+        void presentDeviceCode(deviceCode, dialog.signal).catch(() => {});
       }
     };
     child.stdout.on('data', scan);
     child.stderr.on('data', scan);
     child.on('error', reject);
     child.on('exit', resolve);
-  });
+  }).finally(() => dialog.abort());
   if (code !== 0) throw new Error(`Login failed: ${terminal.command.join(' ')} exited with code ${code}`);
 }
 

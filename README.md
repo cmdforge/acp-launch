@@ -40,7 +40,7 @@ acp-launch -p "hi" --open never -- my-agent --acp
 ## Notes
 
 - If the agent says you're not signed in (ACP `auth_required`, or the 401/403 Copilot returns), acp-launch runs the agent's first advertised auth method, then restarts the agent and retries once:
-  - terminal methods (typed `terminal`, or Copilot's `_meta["terminal-auth"]`) are run as a command; Copilot's `copilot login` opens the browser itself, and device-code URLs printed by a login command are opened for you;
+  - terminal methods (typed `terminal`, or Copilot's `_meta["terminal-auth"]`) are run as a background command. Copilot's login uses the device flow (`--device-code`), so you can approve from any browser or profile, not just the account your default browser is signed in to. When a device code appears, it's copied to the clipboard and shown in a native dialog (macOS) whose "Open GitHub" button opens the verification page; the dialog closes once login completes;
   - agent-handled methods are triggered with `authenticate`, and `elicitation/create` URL requests are opened in the browser.
 - The CLI's `/app` command isn't exposed over ACP, so the app is opened via the `ghapp://` deep link instead.
 - With `--open before`, the app opens while this process still owns the session; whether the app shows the turn live depends on the app.

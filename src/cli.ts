@@ -113,6 +113,8 @@ function onEvent(event: LaunchEvent) {
       return log(event.message);
     case 'session':
       return log(`Session ${event.sessionId}`);
+    case 'device-code':
+      return console.error(`\nSign in to continue: enter \x1b[1m${event.code}\x1b[0m at ${event.url} (copied to clipboard)\n`);
     case 'permission': {
       const decision = event.outcome.outcome === 'selected' ? event.outcome.optionId : 'cancelled';
       return log(`Permission ${decision}: ${event.toolCall.title ?? 'tool call'}`);
