@@ -1,6 +1,6 @@
 {
   "name": "@cmdforge/acp-launch",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Start a GitHub Copilot ACP session with an agent, model, and first prompt, then hand it off to the GitHub Copilot desktop app",
   "keywords": [
     "acp",

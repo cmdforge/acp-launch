@@ -306,13 +306,7 @@ function terminalAuthCommand(method: AuthMethod, agentCommand: string[]) {
     return { command: [...agentCommand, ...(method.args ?? [])], env: method.env ?? {} };
   }
   const legacy = method._meta?.['terminal-auth'] as { command?: string; args?: string[]; env?: Record<string, string> } | undefined;
-  if (legacy?.command) {
-    const args = [...(legacy.args ?? [])];
-    // Copilot's login defaults to a browser flow tied to whatever account the default browser
-    // is signed in to. The device flow lets the user approve from any browser or profile.
-    if (method.id === 'copilot-login' && !args.includes('--device-code')) args.push('--device-code');
-    return { command: [legacy.command, ...args], env: legacy.env ?? {} };
-  }
+  if (legacy?.command) return { command: [legacy.command, ...(legacy.args ?? [])], env: legacy.env ?? {} };
   return undefined;
 }
 

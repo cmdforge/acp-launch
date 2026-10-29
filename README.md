@@ -50,7 +50,7 @@ acp-launch -p "hi" -- my-agent --acp
 ## Notes
 
 - If the agent says you're not signed in (ACP `auth_required`, or the 401/403 Copilot returns), acp-launch runs the agent's first advertised auth method, then restarts the agent and retries once:
-  - terminal methods (typed `terminal`, or Copilot's `_meta["terminal-auth"]`) are run as a background command. Copilot's login uses the device flow (`--device-code`), so you can approve from any browser or profile, not just the account your default browser is signed in to. Copilot opens the verification page itself; acp-launch prints the code and copies it to the clipboard so it's ready to paste;
+  - terminal methods (typed `terminal`, or Copilot's `_meta["terminal-auth"]`) are run as a background command. On a desktop, Copilot's login opens the browser and finishes on its own once you authorize. Where it falls back to the device flow (SSH, containers, headless), acp-launch prints the code and copies it to the clipboard so it's ready to paste;
   - agent-handled methods are triggered with `authenticate`, and `elicitation/create` URL requests are opened in the browser.
 - MCP servers that need OAuth (like the workiq plugin's) make Copilot's ACP mode open their sign-in page on every new session; use `--disable-mcp` for those.
 - Works on macOS, Windows, and Linux. On Windows, bare commands like `npx` are run through `cmd.exe` with quoted arguments, and URLs are opened with `rundll32 url.dll,FileProtocolHandler`.
