@@ -18,6 +18,7 @@
     "type": "git",
     "url": "git+https://github.com/cmdforge/acp-launch.git"
   },
+  "author": "Fluttershy (https://github.com/Fluttershy)",
   "license": "MIT",
   "type": "module",
   "bin": {
