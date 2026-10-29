@@ -1,0 +1,27 @@
+{
+  "name": "@cmdforge/acp-launch",
+  "version": "0.1.0",
+  "description": "Start an ACP agent session, configure it, run a first prompt, and open it in the GitHub Copilot desktop app",
+  "type": "module",
+  "bin": {
+    "acp-launch": "bin/acp-launch.js"
+  },
+  "exports": "./src/launch.js",
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18.3"
+  },
+  "keywords": [
+    "acp",
+    "agent-client-protocol",
+    "copilot",
+    "github-copilot"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
