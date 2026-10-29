@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for trusted publishing and provenance
+  id-token: write # required for trusted publishing (provenance is generated automatically)
 
 jobs:
   publish:
@@ -35,4 +35,4 @@ jobs:
             exit 1
           fi
 
-      - run: npm publish --provenance
+      - run: npm publish

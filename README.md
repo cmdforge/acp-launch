@@ -68,13 +68,9 @@ node dist/cli.js --help
 
 ## Publishing
 
-Releases are published by [.github/workflows/publish.yml](.github/workflows/publish.yml) when a GitHub release is published (tag `v<version>`, matching `package.json`), using npm trusted publishing with provenance.
+Releases are published by [.github/workflows/publish.yml](.github/workflows/publish.yml) when a GitHub release is published, using npm trusted publishing (the repository and `publish.yml` are registered as a trusted publisher on npmjs.com, so no token is needed).
 
-One-time setup:
-1. Publish the first version manually: `npm publish` (runs the build via `prepublishOnly`).
-2. On npmjs.com, open the package's settings → Trusted publishing, and add GitHub Actions with repository `cmdforge/acp-launch` and workflow `publish.yml`.
-
-After that: bump the version (`npm version patch`), push the tag, and publish a GitHub release for it.
+To release: bump the version (`npm version patch`), push the commit and tag, and publish a GitHub release for the tag. The workflow fails if the tag (`v<version>`) doesn't match `package.json`.
 
 ## Programmatic use
 
