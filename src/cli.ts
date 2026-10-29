@@ -1,27 +1,22 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { launch, DEFAULT_AGENT_COMMAND, DEFAULT_URL_TEMPLATE, type LaunchEvent, type OpenTiming, type PermissionPolicy } from './launch.js';
+import { launch, DEFAULT_AGENT_COMMAND, type LaunchEvent, type PermissionPolicy } from './launch.js';
 
 const HELP = `Usage: acp-launch [options] [-- <agent command...>]
 
 Start an ACP session, configure it, optionally run a first prompt, then open
-the desktop app on that session.
+the session in the GitHub Copilot desktop app.
 
 Options:
-  -p, --prompt <text>       First prompt to send ("-" reads stdin)
+  -p, --prompt <text>       First prompt to send
+  -f, --prompt-file <path>  Read the first prompt from a file ("-" reads stdin)
   -c, --config <key=value>  Set a session config option (repeatable). Keys match an
                             option's id, name, or category; values match id or name.
   -m, --model <id>          Shorthand for --config model=<id>
       --mode <id>           Shorthand for --config mode=<id>
-  -a, --agent <name>        Custom agent to load. With the default Copilot command this
-                            is passed as \`copilot --agent <name>\`; otherwise it is
-                            treated as --config agent=<name>
+  -a, --agent <name>        Shorthand for --config agent=<name>
   -C, --cwd <dir>           Session working directory (default: current directory)
-      --open <when>         after (default): open app once the prompt turn finishes
-                            before: open app first, then run the prompt
-                            never: don't open the app
-      --url <template>      Deep link template (default: ${DEFAULT_URL_TEMPLATE})
       --permissions <mode>  Answer tool permission requests during the prompt with
                             deny (default), allow, or allow-always
       --list                Create a session and print the settings it exposes
@@ -34,8 +29,8 @@ Options:
 Agent command defaults to: ${DEFAULT_AGENT_COMMAND.join(' ')}
 
 Examples:
-  acp-launch --agent reviewer -p "Review the open changes"
-  acp-launch -m gpt-5 -c mode=plan --open before -p "Plan a refactor of src/"
+  acp-launch --agent Planner -p "Plan the upgrade"
+  acp-launch -m claude-opus-5.5 -c mode=plan -f prompt.md
   acp-launch --list
   acp-launch -p "hi" -- my-agent --acp`;
 
@@ -50,13 +45,12 @@ function parse() {
       allowPositionals: true,
       options: {
         prompt: { type: 'string', short: 'p' },
+        'prompt-file': { type: 'string', short: 'f' },
         config: { type: 'string', short: 'c', multiple: true, default: [] },
         model: { type: 'string', short: 'm' },
         mode: { type: 'string' },
         agent: { type: 'string', short: 'a' },
         cwd: { type: 'string', short: 'C' },
-        open: { type: 'string', default: 'after' },
-        url: { type: 'string', default: DEFAULT_URL_TEMPLATE },
         permissions: { type: 'string', default: 'deny' },
         list: { type: 'boolean', default: false },
         'no-login': { type: 'boolean', default: false },
@@ -77,13 +71,11 @@ if (o.help) {
 }
 
 const isOneOf = <T extends string>(value: string, allowed: readonly T[]): value is T => (allowed as readonly string[]).includes(value);
-if (!isOneOf(o.open, ['after', 'before', 'never'] as const satisfies readonly OpenTiming[])) fail('--open must be after, before, or never');
 if (!isOneOf(o.permissions, ['deny', 'allow', 'allow-always'] as const satisfies readonly PermissionPolicy[])) {
   fail('--permissions must be deny, allow, or allow-always');
 }
 
-const customCommand = positionals.length > 0;
-const command = customCommand ? positionals : [...DEFAULT_AGENT_COMMAND];
+const command = positionals.length > 0 ? positionals : [...DEFAULT_AGENT_COMMAND];
 
 const config = o.config.map((pair): [string, string] => {
   const eq = pair.indexOf('=');
@@ -92,12 +84,20 @@ const config = o.config.map((pair): [string, string] => {
 });
 if (o.mode) config.push(['mode', o.mode]);
 if (o.model) config.push(['model', o.model]);
-if (o.agent) {
-  if (customCommand) config.push(['agent', o.agent]);
-  else command.push('--agent', o.agent);
-}
+if (o.agent) config.push(['agent', o.agent]);
 
-const prompt = o.prompt === '-' ? readFileSync(0, 'utf8') : o.prompt;
+function readPrompt() {
+  const file = o['prompt-file'];
+  if (file === undefined) return o.prompt;
+  if (o.prompt !== undefined) fail('use either --prompt or --prompt-file, not both');
+  try {
+    return readFileSync(file === '-' ? 0 : file, 'utf8');
+  } catch (err) {
+    fail(`could not read prompt file: ${(err as Error).message}`);
+  }
+}
+const prompt = readPrompt();
+if (prompt !== undefined && !prompt.trim()) fail('prompt is empty');
 
 let midLine = false;
 const log = (msg: string) => {
@@ -138,8 +138,6 @@ try {
     cwd: o.cwd,
     config,
     prompt,
-    open: o.open,
-    urlTemplate: o.url,
     permissions: o.permissions,
     listOnly: o.list,
     login: !o['no-login'],

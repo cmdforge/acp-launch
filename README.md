@@ -3,7 +3,7 @@
 Start a new [ACP](https://agentclientprotocol.com) session, configure it, optionally run a first prompt, then open the GitHub Copilot desktop app on that same session.
 
 ```bash
-npx -y @cmdforge/acp-launch --agent reviewer -p "Review the open changes"
+npx -y @cmdforge/acp-launch --agent Planner -f prompt.md
 ```
 
 ## How it works
@@ -19,13 +19,12 @@ Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package
 
 | Option | Description |
 | --- | --- |
-| `-p, --prompt <text>` | First prompt (`-` reads stdin) |
+| `-p, --prompt <text>` | First prompt |
+| `-f, --prompt-file <path>` | Read the first prompt from a file (`-` reads stdin) |
 | `-c, --config <key=value>` | Set a session config option (repeatable). Keys match id, name, or category |
 | `-m, --model <id>` / `--mode <id>` | Shorthands for `--config model=…` / `mode=…` |
-| `-a, --agent <name>` | Custom agent. With the default command it's passed as `copilot --agent <name>`; with a custom command it's `--config agent=<name>` |
+| `-a, --agent <name>` | Shorthand for `--config agent=<name>`, e.g. `Planner` or `upgrade-agent:planner` |
 | `-C, --cwd <dir>` | Session working directory |
-| `--open after\|before\|never` | Open the app after the turn (default), before it, or not at all |
-| `--url <template>` | Deep link, `{id}` is the session id (default `ghapp://sessions/{id}`) |
 | `--permissions deny\|allow\|allow-always` | How to answer tool permission requests during the prompt (default `deny`) |
 | `--list` | Print the settings the agent exposes and exit |
 | `--no-login` | Fail instead of running the agent's login flow |
@@ -34,7 +33,7 @@ Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package
 Use a different ACP agent by passing its command after `--`:
 
 ```bash
-acp-launch -p "hi" --open never -- my-agent --acp
+acp-launch -p "hi" -- my-agent --acp
 ```
 
 ## Notes
@@ -43,7 +42,8 @@ acp-launch -p "hi" --open never -- my-agent --acp
   - terminal methods (typed `terminal`, or Copilot's `_meta["terminal-auth"]`) are run as a background command. Copilot's login uses the device flow (`--device-code`), so you can approve from any browser or profile, not just the account your default browser is signed in to. When a device code appears, it's copied to the clipboard and shown in a native dialog (macOS) whose "Open GitHub" button opens the verification page; the dialog closes once login completes;
   - agent-handled methods are triggered with `authenticate`, and `elicitation/create` URL requests are opened in the browser.
 - The CLI's `/app` command isn't exposed over ACP, so the app is opened via the `ghapp://` deep link instead.
-- With `--open before`, the app opens while this process still owns the session; whether the app shows the turn live depends on the app.
+- The app is opened once the prompt turn has finished and the session is closed, so it resumes the session with its full history, agent, and model.
+- Run `copilot login` once per machine first. The desktop app's login isn't shared with the CLI.
 
 ## Development
 

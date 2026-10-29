@@ -22,9 +22,7 @@ import {
 
 export const DEFAULT_AGENT_COMMAND = ['npx', '-y', '@github/copilot', '--acp'];
 export { openUrl };
-export const DEFAULT_URL_TEMPLATE = 'ghapp://sessions/{id}';
 
-export type OpenTiming = 'after' | 'before' | 'never';
 export type PermissionPolicy = 'deny' | 'allow' | 'allow-always';
 
 export type LaunchEvent =
@@ -43,10 +41,6 @@ export interface LaunchOptions {
   config?: Array<[string, string]>;
   /** First prompt to send. */
   prompt?: string;
-  /** When to open the app relative to the prompt turn. */
-  open?: OpenTiming;
-  /** Deep link template; `{id}` is replaced with the session id. */
-  urlTemplate?: string;
   /** How to answer tool permission requests. */
   permissions?: PermissionPolicy;
   /** Only create the session and return the settings it exposes. */
@@ -120,8 +114,9 @@ function resolveSetting(settings: Setting[], key: string, value: string) {
   return { setting, value: match.id };
 }
 
-export function sessionUrl(template: string, sessionId: string) {
-  return template.replaceAll('{id}', encodeURIComponent(sessionId));
+/** Deep link that opens (resumes) a session in the GitHub Copilot desktop app. */
+export function sessionUrl(sessionId: string) {
+  return `ghapp://sessions/${encodeURIComponent(sessionId)}`;
 }
 
 function pickPermission(options: PermissionOption[], policy: PermissionPolicy): RequestPermissionOutcome {
@@ -152,8 +147,6 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
     cwd = process.cwd(),
     config = [],
     prompt,
-    open = 'after',
-    urlTemplate = DEFAULT_URL_TEMPLATE,
     permissions = 'deny',
     listOnly = false,
     onEvent = () => {},
@@ -231,12 +224,6 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
           onEvent({ type: 'status', message: `Set ${setting.id} = ${value}` });
         }
 
-        const url = sessionUrl(urlTemplate, sessionId);
-        if (open === 'before') {
-          onEvent({ type: 'status', message: `Opening ${url}` });
-          await openUrl(url);
-        }
-
         let stopReason: StopReason | undefined;
         if (prompt) {
           onEvent({ type: 'status', message: 'Sending prompt…' });
@@ -261,14 +248,14 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
         if (init.agentCapabilities?.sessionCapabilities?.close) {
           await agent.request('session/close', { sessionId }).catch(() => {});
         }
-        return { sessionId, url, stopReason };
+        return { sessionId, url: sessionUrl(sessionId), stopReason };
       } finally {
         session.dispose();
       }
     });
 
     await shutdown(proc, exited);
-    if (open === 'after' && result.url) {
+    if (result.url) {
       onEvent({ type: 'status', message: `Opening ${result.url}` });
       await openUrl(result.url);
     }
