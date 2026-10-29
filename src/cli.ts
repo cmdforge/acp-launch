@@ -1,108 +1,84 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { parseArgs } from 'node:util';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { launch, DEFAULT_AGENT_COMMAND, type LaunchEvent, type PermissionPolicy } from './launch.js';
 
-const HELP = `Usage: acp-launch [options] [-- <agent command...>]
+const collect = (value: string, previous: string[] = []) => [...previous, value];
 
-Start an ACP session, configure it, optionally run a first prompt, then open
-the session in the GitHub Copilot desktop app.
+function parseConfigPair(pair: string, previous: Array<[string, string]> = []): Array<[string, string]> {
+  const eq = pair.indexOf('=');
+  if (eq <= 0) throw new InvalidArgumentError('expected key=value');
+  return [...previous, [pair.slice(0, eq), pair.slice(eq + 1)]];
+}
 
-Options:
-  -p, --prompt <text>       First prompt to send
-  -f, --prompt-file <path>  Read the first prompt from a file ("-" reads stdin)
-  -c, --config <key=value>  Set a session config option (repeatable). Keys match an
-                            option's id, name, or category; values match id or name.
-  -m, --model <id>          Shorthand for --config model=<id>
-      --mode <id>           Shorthand for --config mode=<id>
-  -a, --agent <name>        Shorthand for --config agent=<name>
-      --disable-mcp <name>  Don't start this MCP server in the ACP session (repeatable).
-                            Avoids sign-in pages from servers like workiq; the app
-                            uses its own MCP setup when it resumes the session
-  -C, --cwd <dir>           Session working directory (default: current directory)
-      --permissions <mode>  Answer tool permission requests during the prompt with
-                            deny (default), allow, or allow-always
-      --list                Create a session and print the settings it exposes
-      --no-login            Fail instead of running the agent's login flow when
-                            it reports you aren't signed in
-  -q, --quiet               Don't stream agent output
-      --json                Print the result as JSON on stdout
-  -h, --help                Show this help
-
-Agent command defaults to: ${DEFAULT_AGENT_COMMAND.join(' ')}
-
+const program = new Command('acp-launch')
+  .description('Start an ACP session, configure it, optionally run a first prompt, then open the session in the GitHub Copilot desktop app.')
+  .usage('[options] [-- <agent command...>]')
+  .argument('[agent-command...]', `agent to run over ACP (default: ${DEFAULT_AGENT_COMMAND.join(' ')})`)
+  .option('-p, --prompt <text>', 'first prompt to send')
+  .addOption(new Option('-f, --prompt-file <path>', 'read the first prompt from a file ("-" reads stdin)').conflicts('prompt'))
+  .option('-c, --config <key=value>', "set a session config option (repeatable); keys match an option's id, name, or category", parseConfigPair)
+  .option('-a, --agent <name>', 'shorthand for --config agent=<name>')
+  .option('-m, --model <id>', 'shorthand for --config model=<id>')
+  .option('--mode <id>', 'shorthand for --config mode=<id>')
+  .option('--disable-mcp <name>', "don't start this MCP server in the ACP session (repeatable), e.g. workiq", collect)
+  .option('-C, --cwd <dir>', 'session working directory (default: current directory)')
+  .addOption(
+    new Option('--permissions <mode>', 'how to answer tool permission requests during the prompt')
+      .choices(['deny', 'allow', 'allow-always'] satisfies PermissionPolicy[])
+      .default('deny'),
+  )
+  .option('--list', 'create a session and print the settings it exposes')
+  .option('--no-login', "fail instead of running the agent's login flow when you aren't signed in")
+  .option('-q, --quiet', "don't stream agent output")
+  .option('--json', 'print the result as JSON on stdout')
+  .addHelpText(
+    'after',
+    `
 Examples:
   acp-launch --agent Planner -p "Plan the upgrade"
   acp-launch -m claude-opus-5.5 -c mode=plan -f prompt.md
+  acp-launch --disable-mcp workiq -f prompt.md
   acp-launch --list
-  acp-launch -p "hi" -- my-agent --acp`;
+  acp-launch -p "hi" -- my-agent --acp`,
+  )
+  .showHelpAfterError()
+  .parse();
 
-function fail(message: string): never {
-  console.error(`acp-launch: ${message}`);
-  process.exit(1);
-}
+const o = program.opts<{
+  prompt?: string;
+  promptFile?: string;
+  config?: Array<[string, string]>;
+  agent?: string;
+  model?: string;
+  mode?: string;
+  disableMcp?: string[];
+  cwd?: string;
+  permissions: PermissionPolicy;
+  list?: boolean;
+  login: boolean;
+  quiet?: boolean;
+  json?: boolean;
+}>();
 
-function parse() {
-  try {
-    return parseArgs({
-      allowPositionals: true,
-      options: {
-        prompt: { type: 'string', short: 'p' },
-        'prompt-file': { type: 'string', short: 'f' },
-        config: { type: 'string', short: 'c', multiple: true, default: [] },
-        model: { type: 'string', short: 'm' },
-        mode: { type: 'string' },
-        agent: { type: 'string', short: 'a' },
-        'disable-mcp': { type: 'string', multiple: true, default: [] },
-        cwd: { type: 'string', short: 'C' },
-        permissions: { type: 'string', default: 'deny' },
-        list: { type: 'boolean', default: false },
-        'no-login': { type: 'boolean', default: false },
-        quiet: { type: 'boolean', short: 'q', default: false },
-        json: { type: 'boolean', default: false },
-        help: { type: 'boolean', short: 'h', default: false },
-      },
-    });
-  } catch (err) {
-    fail((err as Error).message);
-  }
-}
+const command = program.args.length > 0 ? program.args : [...DEFAULT_AGENT_COMMAND];
+for (const name of o.disableMcp ?? []) command.push('--disable-mcp-server', name);
 
-const { values: o, positionals } = parse();
-if (o.help) {
-  console.log(HELP);
-  process.exit(0);
-}
-
-const isOneOf = <T extends string>(value: string, allowed: readonly T[]): value is T => (allowed as readonly string[]).includes(value);
-if (!isOneOf(o.permissions, ['deny', 'allow', 'allow-always'] as const satisfies readonly PermissionPolicy[])) {
-  fail('--permissions must be deny, allow, or allow-always');
-}
-
-const command = positionals.length > 0 ? positionals : [...DEFAULT_AGENT_COMMAND];
-for (const name of o['disable-mcp']) command.push('--disable-mcp-server', name);
-
-const config = o.config.map((pair): [string, string] => {
-  const eq = pair.indexOf('=');
-  if (eq <= 0) fail(`--config expects key=value, got "${pair}"`);
-  return [pair.slice(0, eq), pair.slice(eq + 1)];
-});
+const config = [...(o.config ?? [])];
 if (o.mode) config.push(['mode', o.mode]);
 if (o.model) config.push(['model', o.model]);
 if (o.agent) config.push(['agent', o.agent]);
 
 function readPrompt() {
-  const file = o['prompt-file'];
-  if (file === undefined) return o.prompt;
-  if (o.prompt !== undefined) fail('use either --prompt or --prompt-file, not both');
+  if (o.promptFile === undefined) return o.prompt;
   try {
-    return readFileSync(file === '-' ? 0 : file, 'utf8');
+    return readFileSync(o.promptFile === '-' ? 0 : o.promptFile, 'utf8');
   } catch (err) {
-    fail(`could not read prompt file: ${(err as Error).message}`);
+    program.error(`error: could not read prompt file: ${(err as Error).message}`);
   }
 }
 const prompt = readPrompt();
-if (prompt !== undefined && !prompt.trim()) fail('prompt is empty');
+if (prompt !== undefined && !prompt.trim()) program.error('error: prompt is empty');
 
 let midLine = false;
 const log = (msg: string) => {
@@ -145,7 +121,7 @@ try {
     prompt,
     permissions: o.permissions,
     listOnly: o.list,
-    login: !o['no-login'],
+    login: o.login,
     onEvent,
   });
   if (midLine) process.stdout.write('\n');
@@ -164,5 +140,6 @@ try {
   process.exit(0);
 } catch (err) {
   if (midLine) process.stdout.write('\n');
-  fail((err as Error).message);
+  console.error(`acp-launch: ${(err as Error).message}`);
+  process.exit(1);
 }

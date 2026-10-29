@@ -21,7 +21,7 @@
     "prepublishOnly": "npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "keywords": [
     "acp",
@@ -34,7 +34,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^2.1.0"
+    "@agentclientprotocol/sdk": "^2.1.0",
+    "commander": "^15.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
