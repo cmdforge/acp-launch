@@ -68,9 +68,9 @@ node dist/cli.js --help
 
 ## Publishing
 
-Releases are published by [.github/workflows/publish.yml](.github/workflows/publish.yml) when a GitHub release is published, using npm trusted publishing (the repository and `publish.yml` are registered as a trusted publisher on npmjs.com, so no token is needed).
+Releases are published by [.github/workflows/publish.yml](.github/workflows/publish.yml) when a version tag is pushed, using npm trusted publishing (the repository and `publish.yml` are registered as a trusted publisher on npmjs.com, so no token is needed).
 
-To release: bump the version (`npm version patch`), push the commit and tag, and publish a GitHub release for the tag. The workflow fails if the tag (`v<version>`) doesn't match `package.json`.
+To release: bump the version (`npm version patch`, which commits and tags `v<version>`), then `git push --follow-tags`. The workflow fails if the tag (`v<version>`) doesn't match `package.json`.
 
 ## Programmatic use
 
