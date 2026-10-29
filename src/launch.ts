@@ -21,7 +21,8 @@ import {
   type ToolCallUpdate,
 } from '@agentclientprotocol/sdk';
 
-export const DEFAULT_AGENT_COMMAND = ['npx', '-y', '@github/copilot', '--acp'];
+export const COPILOT_COMMAND = ['npx', '-y', '@github/copilot'];
+export const DEFAULT_AGENT_COMMAND = [...COPILOT_COMMAND, '--acp'];
 export { openUrl };
 
 export type PermissionPolicy = 'deny' | 'allow' | 'allow-always';
@@ -46,6 +47,8 @@ export interface LaunchOptions {
   permissions?: PermissionPolicy;
   /** Only create the session and return the settings it exposes. */
   listOnly?: boolean;
+  /** Run the prompt in plan mode, then switch back to the previous mode before handing off to the app. */
+  planFirst?: boolean;
   /** Run the agent's login flow if it reports the user isn't authenticated. Defaults to true. */
   login?: boolean;
   onEvent?: (event: LaunchEvent) => void;
@@ -150,6 +153,7 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
     prompt,
     permissions = 'deny',
     listOnly = false,
+    planFirst = false,
     onEvent = () => {},
   } = opts;
   const [bin, ...args] = command;
@@ -210,10 +214,11 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
         let settings = describeSettings(session.newSessionResponse.configOptions, session.modes);
         if (listOnly) return { sessionId, settings };
 
-        for (const [key, raw] of config) {
+        const apply = async (key: string, raw: string) => {
           const { setting, value } = resolveSetting(settings, key, raw);
           if (setting.kind === 'mode') {
             await agent.request('session/set_mode', { sessionId, modeId: value });
+            setting.current = value;
           } else {
             const request: SetSessionConfigOptionRequest =
               typeof setting.current === 'boolean'
@@ -223,6 +228,15 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
             settings = describeSettings(response.configOptions, session.modes);
           }
           onEvent({ type: 'status', message: `Set ${setting.id} = ${value}` });
+        };
+        for (const [key, raw] of config) await apply(key, raw);
+
+        // Plan first: run the prompt in plan mode so nothing changes before the user sees it,
+        // then put the session back in its previous mode so the app resumes ready to implement.
+        let restoreMode: string | undefined;
+        if (planFirst && prompt) {
+          restoreMode = String(resolveSetting(settings, 'mode', 'plan').setting.current);
+          await apply('mode', 'plan');
         }
 
         let stopReason: StopReason | undefined;
@@ -244,6 +258,7 @@ async function runOnce(opts: LaunchOptions, allowLogin: boolean): Promise<Launch
           cancel = undefined;
           onEvent({ type: 'status', message: `Turn finished: ${stopReason}` });
         }
+        if (restoreMode !== undefined) await apply('mode', restoreMode);
 
         // Release the session so the desktop app can take it over with everything flushed to disk.
         if (init.agentCapabilities?.sessionCapabilities?.close) {

@@ -15,6 +15,14 @@ Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package
 3. Sends the prompt with `session/prompt` and streams the reply to stdout.
 4. Closes the session so it's flushed to `~/.copilot/session-state/<id>`, then opens `ghapp://sessions/<id>`. The desktop app reads that directory and opens the session.
 
+## Hand off a task to the app
+
+```bash
+acp-launch --agent Planner --plan-first --no-mcp -f prompt.md
+```
+
+The ACP turn only plans (in plan mode, without MCP servers), then the session is switched back to agent mode and opened in the app. Read the plan there and reply (e.g. "go") to start the work with the app's own tools and MCP servers.
+
 ## Options
 
 | Option | Description |
@@ -25,6 +33,8 @@ Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package
 | `-m, --model <id>` / `--mode <id>` | Shorthands for `--config model=…` / `mode=…` |
 | `-a, --agent <name>` | Shorthand for `--config agent=<name>`, e.g. `Planner` or `upgrade-agent:planner` |
 | `--disable-mcp <name>` | Don't start this MCP server in the ACP session (repeatable), e.g. `workiq` to stop its sign-in page opening on every run. The app uses its own MCP setup when it resumes the session |
+| `--no-mcp` | Don't start any MCP servers in the ACP session. Lists them with `copilot mcp list` and disables each (plus the built-in ones); overrides `--disable-mcp` |
+| `--plan-first` | Run the prompt in plan mode, then switch back to the previous mode before opening the app, so the session arrives with a plan and nothing changed yet |
 | `-C, --cwd <dir>` | Session working directory |
 | `--permissions deny\|allow\|allow-always` | How to answer tool permission requests during the prompt (default `deny`) |
 | `--list` | Print the settings the agent exposes and exit |

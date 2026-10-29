@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Command, InvalidArgumentError, Option } from 'commander';
-import { launch, DEFAULT_AGENT_COMMAND, type LaunchEvent, type PermissionPolicy } from './launch.js';
+import { launch, COPILOT_COMMAND, DEFAULT_AGENT_COMMAND, type LaunchEvent, type PermissionPolicy } from './launch.js';
+import { listMcpServers } from './mcp.js';
 
 const collect = (value: string, previous: string[] = []) => [...previous, value];
 
@@ -22,6 +24,8 @@ const program = new Command('acp-launch')
   .option('-m, --model <id>', 'shorthand for --config model=<id>')
   .option('--mode <id>', 'shorthand for --config mode=<id>')
   .option('--disable-mcp <name>', "don't start this MCP server in the ACP session (repeatable), e.g. workiq", collect)
+  .option('--no-mcp', "don't start any MCP servers in the ACP session (overrides --disable-mcp); the app uses its own when it resumes")
+  .option('--plan-first', 'run the prompt in plan mode, then switch back to the previous mode before opening the app')
   .option('-C, --cwd <dir>', 'session working directory (default: current directory)')
   .addOption(
     new Option('--permissions <mode>', 'how to answer tool permission requests during the prompt')
@@ -38,6 +42,7 @@ const program = new Command('acp-launch')
 Examples:
   acp-launch --agent Planner -p "Plan the upgrade"
   acp-launch -m claude-opus-5.5 -c mode=plan -f prompt.md
+  acp-launch --agent Planner --plan-first --no-mcp -f prompt.md
   acp-launch --disable-mcp workiq -f prompt.md
   acp-launch --list
   acp-launch -p "hi" -- my-agent --acp`,
@@ -53,6 +58,8 @@ const o = program.opts<{
   model?: string;
   mode?: string;
   disableMcp?: string[];
+  mcp: boolean;
+  planFirst?: boolean;
   cwd?: string;
   permissions: PermissionPolicy;
   list?: boolean;
@@ -62,7 +69,18 @@ const o = program.opts<{
 }>();
 
 const command = program.args.length > 0 ? program.args : [...DEFAULT_AGENT_COMMAND];
-for (const name of o.disableMcp ?? []) command.push('--disable-mcp-server', name);
+if (o.mcp) {
+  for (const name of o.disableMcp ?? []) command.push('--disable-mcp-server', name);
+} else {
+  // Disable every configured server by name, and the built-in ones with Copilot's own switch.
+  try {
+    const servers = await listMcpServers(COPILOT_COMMAND, path.resolve(o.cwd ?? '.'));
+    for (const { name, source } of servers) if (source !== 'builtin') command.push('--disable-mcp-server', name);
+    command.push('--disable-builtin-mcps');
+  } catch (err) {
+    program.error(`error: --no-mcp: ${(err as Error).message}`);
+  }
+}
 
 const config = [...(o.config ?? [])];
 if (o.mode) config.push(['mode', o.mode]);
@@ -79,6 +97,7 @@ function readPrompt() {
 }
 const prompt = readPrompt();
 if (prompt !== undefined && !prompt.trim()) program.error('error: prompt is empty');
+if (o.planFirst && prompt === undefined) program.error('error: --plan-first needs --prompt or --prompt-file');
 
 let midLine = false;
 const log = (msg: string) => {
@@ -121,6 +140,7 @@ try {
     prompt,
     permissions: o.permissions,
     listOnly: o.list,
+    planFirst: o.planFirst,
     login: o.login,
     onEvent,
   });
