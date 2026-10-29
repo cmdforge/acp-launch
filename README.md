@@ -28,6 +28,7 @@ Built on the official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package
 | `--url <template>` | Deep link, `{id}` is the session id (default `ghapp://sessions/{id}`) |
 | `--permissions deny\|allow\|allow-always` | How to answer tool permission requests during the prompt (default `deny`) |
 | `--list` | Print the settings the agent exposes and exit |
+| `--no-login` | Fail instead of running the agent's login flow |
 | `--json` | Print `{ sessionId, url, stopReason }` |
 
 Use a different ACP agent by passing its command after `--`:
@@ -38,7 +39,9 @@ acp-launch -p "hi" --open never -- my-agent --acp
 
 ## Notes
 
-- The Copilot CLI must be logged in (`npx -y @github/copilot login`); otherwise `session/new` fails with 403.
+- If the agent says you're not signed in (ACP `auth_required`, or the 401/403 Copilot returns), acp-launch runs the agent's first advertised auth method, then restarts the agent and retries once:
+  - terminal methods (typed `terminal`, or Copilot's `_meta["terminal-auth"]`) are run as a command; Copilot's `copilot login` opens the browser itself, and device-code URLs printed by a login command are opened for you;
+  - agent-handled methods are triggered with `authenticate`, and `elicitation/create` URL requests are opened in the browser.
 - The CLI's `/app` command isn't exposed over ACP, so the app is opened via the `ghapp://` deep link instead.
 - With `--open before`, the app opens while this process still owns the session; whether the app shows the turn live depends on the app.
 

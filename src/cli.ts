@@ -25,6 +25,8 @@ Options:
       --permissions <mode>  Answer tool permission requests during the prompt with
                             deny (default), allow, or allow-always
       --list                Create a session and print the settings it exposes
+      --no-login            Fail instead of running the agent's login flow when
+                            it reports you aren't signed in
   -q, --quiet               Don't stream agent output
       --json                Print the result as JSON on stdout
   -h, --help                Show this help
@@ -57,6 +59,7 @@ function parse() {
         url: { type: 'string', default: DEFAULT_URL_TEMPLATE },
         permissions: { type: 'string', default: 'deny' },
         list: { type: 'boolean', default: false },
+        'no-login': { type: 'boolean', default: false },
         quiet: { type: 'boolean', short: 'q', default: false },
         json: { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
@@ -137,6 +140,7 @@ try {
     urlTemplate: o.url,
     permissions: o.permissions,
     listOnly: o.list,
+    login: !o['no-login'],
     onEvent,
   });
   if (midLine) process.stdout.write('\n');
